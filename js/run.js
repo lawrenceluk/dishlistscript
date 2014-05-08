@@ -166,7 +166,6 @@ checkExists = function(bb, uniq) {
 	show("Constructed query for "+bb.name);
 	query.find({
 	  success: function(results) {
-	  	//show(bb.name+" exists: "+(results.length!=0));
 	  	// add a new place
 	    if (results.length > 0) {
 	    	show(results[0].attributes.name+" exists in the database.");

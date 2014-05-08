@@ -5,6 +5,8 @@ body {
 
 h3 {
 	text-align: center;
+	font-family: 'Helvetica';
+	font-weight: 200;
 }
 
 .main {
@@ -47,14 +49,19 @@ h3 {
 }
 
 #gobutton {
+	font-size: 1.2em;
 	font-family: helvetica;
-	font-size: 1.4em;
-	padding: 10px 20px;
+	font-weight: 200;
+	padding: 5px 20px;
 	margin-top: 20px;
 	border: 2px solid #444;
 	border-radius: 5px;
 	cursor: pointer;
 	background: white;
+}
+#gobutton:hover {
+	color: #777;
+	border-color: #777;
 }
 
 .hide {
