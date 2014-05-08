@@ -1,14 +1,11 @@
 Parse.initialize("dmq07tEG39xubkof59l2UyXnZJcojifl3jlYQ0af", "wHkRLFgELqtUWCAnoXKPdJi7pWfYMJnNisEhuNS2");
 var Restaurant = Parse.Object.extend("Restaurant");
+var Dish = Parse.Object.extend("Dish");
 var auth = {
-  //
-  // Update with your auth tokens.
-  //
+  // "hidden" keys hahaha
   consumerKey: "PYJ9fp4Zs357x8GKEcc2OA",
   consumerSecret: "Svw5yWnPK26_WYOrbkcvsC4PMNU",
   accessToken: "_o14KmTq969arSh-BdJBIHIBLanS3h2J",
-  // This example is a proof of concept, for how to use the Yelp v2 API with javascript.
-  // You wouldn't actually want to expose your access token secret like this in a real application.
   accessTokenSecret: "MLFvYopfLQVy8YWpN7WObb8u_EA",
   serviceProvider: {
     signatureMethod: "HMAC-SHA1"
@@ -19,8 +16,110 @@ var accessor = {
   tokenSecret: auth.accessTokenSecret
 };
 
+function makeLocuSearch(rname, address, parseobject) {
+	var message = "https://api.locu.com/v1_0/venue/search/"
+	var parameters = {
+		name: rname,
+		street_address: address,
+		//api_key: "30cea3a865def155ddf7c9d321c4d7c14855c3b0" // lluk
+		api_key: "4232cdc3ccb9ea2140dab81b36109d9532ae1bf0" // jenovaaqua
+		// 7c23a8b8d7e1ec7e147e6e7a2cee9a55c3d24e07 // will
+	};
+	$.ajax({
+	  'url': message,
+	  'data': parameters,
+	  'cache': true,
+	  'dataType': 'jsonp',
+	  'success': function(data, textStats, XMLHttpRequest) {
+	   	if (data.objects.length == 0 || data.objects[0].has_menu == false) {
+	   		show(rname+" does not have an entry with Locu.");
+	   	} else {
+	   		show("<span class='greenish'>"+rname+" has a menu listed with Locu.</span>");
+	   		getMenuFromLocu(data.objects[0].id, parseobject);
+	   	}
+	  }
+	});
+}
+
+var getMenuFromLocu = function(id, parserestaurant) {
+	var base = "https://api.locu.com/v1_0/venue/"+id+"/";
+	var parameters = {
+		//api_key: "30cea3a865def155ddf7c9d321c4d7c14855c3b0" // lluk
+		api_key: "4232cdc3ccb9ea2140dab81b36109d9532ae1bf0" // jenovaaqua
+		// 7c23a8b8d7e1ec7e147e6e7a2cee9a55c3d24e07 // will
+	};
+	$.ajax({
+	  'url': base,
+	  'data': parameters,
+	  'cache': true,
+	  'dataType': 'jsonp',
+	  'success': function(data, textStats, XMLHttpRequest) {
+	  	//console.log(data.objects[0].menus);
+	   	var menu = data.objects[0].menus;
+	   	for (var section=0;section<menu.length;section++) {
+	   		var itemsonly = [];
+				getItems(menu[section].sections, itemsonly);
+				//console.log(itemsonly);
+				show(parserestaurant.attributes.name+": Retrieved "+itemsonly.length+" dishes from Locu.");
+				for (var dd=0;dd<itemsonly.length;dd++) {
+					addDishToParse(itemsonly[dd], parserestaurant);
+				}
+				show("Saving to Parse. Please wait, this might take a while...");
+	   	}
+	  },
+	  'error': function(error) {
+	  	console.log("Error: "+error);
+	  }
+	});
+}
+
+var addDishToParse = function(dish, parserestaurant) {
+	var d = new Dish();
+	if (!dish.price)
+		dish.price = -1;
+  d.save(
+  	{
+  		name: dish.name,
+  		description: dish.description,
+  		price: dish.price.toString(),
+  		restaurant: parserestaurant
+  	}, 
+	  {
+	  success: function(object) {
+	  	showDish(parserestaurant.attributes.name+" : "+object.attributes.name);
+	  },
+	  error: function(model, error) {
+	    console.log("Error: "+JSON.stringify(error));
+	  }
+	});
+}
+
+// recursively gets the dishes from the stupid hierarchical menu
+function getItems(section, results) {
+    for (var i=0;i<section.length;i++) {
+        var value = section[i];
+        if (typeof value === 'array') {
+            getItems(value, results);
+        } else if (typeof value == 'object') {
+        	if (value.subsections) {
+        		getItems(value.subsections, results);
+        	} else if (value.contents) {
+        		getItems(value.contents, results);
+        	} else if (value.type && value.type=="ITEM") {
+        		results.push({
+        			name: value.name,
+        			description: value.description,
+        			price: value.price
+        		});
+        	}
+        }
+    }
+    return results;
+}
+
 function makeSearch(terms, location) {
 	var parameters = [];
+	parameters.push(['limit', 5]);
 	parameters.push(['term', terms]);
 	parameters.push(['location', location]);
 	parameters.push(['callback', 'cb']);
@@ -45,6 +144,7 @@ function makeSearch(terms, location) {
 	  'jsonpCallback': 'cb',
 	  'success': function(data, textStats, XMLHttpRequest) {
 	   	var bs = data.businesses;
+	   	show("Yelp retrieved "+bs.length+" locations:");
 	   	for (var i=0;i<bs.length;i++) {
 	   		// set up for a save
 	   		var loc = bs[i].location;
@@ -55,7 +155,6 @@ function makeSearch(terms, location) {
 	   		long_addr = long_addr.substring(0, long_addr.length-2);
 	   		// check if it already exists
 	   		checkExists(bs[i], long_addr);
-	   		//show(bb.name+" ("+bb.rating+"/5 in "+bb.review_count+" reviews)");
 	   	}
 	  }
 	});
@@ -104,25 +203,29 @@ addToParse = function(bb) {
 	if (loc.neighborhoods) neg = loc.neighborhoods[0];
 
 	var r = new Restaurant();
-	  r.save(
-	  	{
-	  		name: bb.name,
-	  		rating: bb.rating,
-	  		review_count: bb.review_count,
-	  		yelp_image_url: bb.image_url,
-	  		display_yelp_categories: disp_cats,
-	  		yelp_categories: cats,
-	  		display_phone_number: bb.display_phone,
-	  		phone_number: bb.phone,
-	  		closed: bb.is_closed,
-	  		neighborhood: neg,
-	  		short_address: short_addr,
-	  		full_address: long_addr
-	  	}, 
+	saveRestaurant(r, bb, disp_cats, cats, neg, short_addr, long_addr);
+}
+
+function saveRestaurant(r, bb, disp_cats, cats, neg, short_addr, long_addr) {
+	 r.save(
+  	{
+  		name: bb.name,
+  		rating: bb.rating,
+  		review_count: bb.review_count,
+  		yelp_image_url: bb.image_url,
+  		display_yelp_categories: disp_cats,
+  		yelp_categories: cats,
+  		display_phone_number: bb.display_phone,
+  		phone_number: bb.phone,
+  		closed: bb.is_closed,
+  		neighborhood: neg,
+  		short_address: short_addr,
+  		full_address: long_addr
+  	}, 
 	  {
 	  success: function(object) {
-	  	show(object.attributes.name+" saved to Parse.");
-	  	console.log(object);
+	  	show(object.attributes.name+" saved to Parse. Checking for menu...");
+	  	makeLocuSearch(object.attributes.name, object.attributes.short_address.split(",")[0], r); 
 	  },
 	  error: function(model, error) {
 	    show("Error: "+error);
@@ -131,12 +234,20 @@ addToParse = function(bb) {
 }
 
 var OUT = $("#output");
+var OUT2 = $("#dishoutput1");
+var OUT3 = $("#dishoutput2");
 var s1 = $("#searchbox1");
 var s2 = $("#searchbox2");
 var time = Date.now();
 
 function show(str) {
 	OUT.append("<span class='d'>"+((Date.now()-time)/1000).toFixed(3)+"</span> : "+str+"<br />");
+	$("html, body").scrollTop($(document).height());
+}
+
+function showDish(str) {
+	OUT2.html("<span class='d'>"+((Date.now()-time)/1000).toFixed(3)+"</span><span class='greenish'> Saved dish: "+str+"</span>");
+	OUT3.html("<span class='d'>"+((Date.now()-time)/1000).toFixed(3)+"</span><span class='greenish'> Saved dish: "+str+"</span>");
 }
 
 show("Initialized.");
@@ -145,14 +256,18 @@ show("Initialized.");
 $("#gobutton").click(function() {
 	time = Date.now();
 	OUT.html("");
-	$("#gobutton").addClass("hide");
+	OUT2.html("");
+	OUT3.html("");
 	show("Initialized.");
 	if (s1.val().length == 0 || s2.val().length == 0) {
 		show("Invalid query.");
 	} else {
+		$("#gobutton").addClass("hide");
+		$("#important").removeClass("hide");
+		setTimeout(function() {
+			$("#gobutton").removeClass("hide");
+			$("#important").addClass("hide");
+		}, 10000);
 		makeSearch(s1.val(), s2.val());
 	}
-	setTimeout(function() {
-		$("#gobutton").removeClass("hide");
-	}, 2000);
 });
